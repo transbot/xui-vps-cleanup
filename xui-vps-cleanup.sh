@@ -6,7 +6,7 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-VERSION="1.1.0"
+VERSION="1.1.1"
 JOURNAL_MAX_USE="${JOURNAL_MAX_USE:-200M}"
 JOURNAL_KEEP_FREE="${JOURNAL_KEEP_FREE:-1G}"
 ASSUME_YES=0
@@ -185,16 +185,16 @@ capture_state() {
   envfile="$dir/${label}.env"
 
   local root_total root_used root_avail root_pct
-  read -r root_total root_used root_avail root_pct < <(
+  IFS=' ' read -r root_total root_used root_avail root_pct < <(
     df -P -B1 / 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print $2,$3,$4,$5}'
   )
   root_total="${root_total:-0}"; root_used="${root_used:-0}"; root_avail="${root_avail:-0}"; root_pct="${root_pct:-0}"
 
   local mem_total mem_used mem_free mem_available swap_total swap_used swap_free
-  read -r mem_total mem_used mem_free mem_available < <(
+  IFS=' ' read -r mem_total mem_used mem_free mem_available < <(
     free -b 2>/dev/null | awk '/^Mem:/ {print $2,$3,$4,$7}'
   )
-  read -r swap_total swap_used swap_free < <(
+  IFS=' ' read -r swap_total swap_used swap_free < <(
     free -b 2>/dev/null | awk '/^Swap:/ {print $2,$3,$4}'
   )
   mem_total="${mem_total:-0}"; mem_used="${mem_used:-0}"; mem_free="${mem_free:-0}"; mem_available="${mem_available:-0}"
@@ -482,7 +482,9 @@ finalize_report() {
 }
 
 print_cmd() {
-  printf '\n$ %s\n' "$*"
+  printf '\n$'
+  printf ' %q' "$@"
+  printf '\n'
   "$@" || true
 }
 
@@ -549,7 +551,7 @@ clean_low_risk() {
   log "Low-risk cleanup complete."
 }
 
-protected_pkg_regex='^(openssh-server|openssh-client|ssh|systemd|systemd-sysv|systemd-resolved|udev|netplan.io|iproute2|linux-generic|linux-image-generic|grub-pc|grub-common|ubuntu-minimal|cloud-init|fail2ban|ca-certificates|curl|wget|tar|unzip|bash|coreutils|apt|dpkg|python3|sudo)$'
+protected_pkg_regex='^(openssh-server|openssh-client|ssh|systemd|systemd-sysv|systemd-resolved|udev|netplan.io|network-manager|ifupdown|isc-dhcp-client|networkd-dispatcher|iproute2|linux-generic|linux-image-generic|grub-pc|grub-common|ubuntu-minimal|cloud-init|fail2ban|ca-certificates|curl|wget|tar|unzip|bash|coreutils|apt|dpkg|python3|sudo)$'
 
 apt_sim_guard() {
   local mode="$1"; shift
@@ -583,13 +585,13 @@ purge_known_desktop_stack() {
   local pkgs=() p
 
   for p in "${candidates[@]}"; do
-    if pkg_installed "$p" && pkg_manual "$p"; then
+    if pkg_installed "$p"; then
       pkgs+=("$p")
     fi
   done
 
   if ((${#pkgs[@]})); then
-    log "Manual desktop/RDP entry packages detected: ${pkgs[*]}"
+    log "Known desktop/RDP entry packages detected: ${pkgs[*]}"
     apt_sim_guard purge "${pkgs[@]}" >/dev/null
     apt-get -y purge "${pkgs[@]}"
   else
