@@ -553,26 +553,26 @@ clean_low_risk() {
 
 protected_pkg_regex='^(openssh-server|openssh-client|ssh|systemd|systemd-sysv|systemd-resolved|udev|netplan.io|network-manager|ifupdown|isc-dhcp-client|networkd-dispatcher|iproute2|linux-generic|linux-image-generic|grub-pc|grub-common|ubuntu-minimal|cloud-init|fail2ban|ca-certificates|curl|wget|tar|unzip|bash|coreutils|apt|dpkg|python3|sudo)$'
 
-apt_sim_guard() (
+apt_sim_guard() {
   local mode="$1"
   shift
 
-  local tmp removed bad
+  local tmp removed bad rc=0
   tmp="$(mktemp)"
-  trap 'rm -f "$tmp"' EXIT
 
-  if [[ "$mode" == purge ]]; then
-    apt-get -s purge "$@" >"$tmp" 2>&1 || {
-      cat "$tmp"
-      return 1
-    }
-  elif [[ "$mode" == autoremove ]]; then
-    apt-get -s autoremove --purge >"$tmp" 2>&1 || {
-      cat "$tmp"
-      return 1
-    }
+  if [[ "$mode" == "purge" ]]; then
+    apt-get -s purge "$@" >"$tmp" 2>&1 || rc=$?
+  elif [[ "$mode" == "autoremove" ]]; then
+    apt-get -s autoremove --purge >"$tmp" 2>&1 || rc=$?
   else
+    rm -f "$tmp"
     return 1
+  fi
+
+  if (( rc != 0 )); then
+    cat "$tmp"
+    rm -f "$tmp"
+    return "$rc"
   fi
 
   removed="$(awk '/^Remv / {print $2}' "$tmp" | sort -u)"
@@ -580,11 +580,13 @@ apt_sim_guard() (
 
   if [[ -n "$bad" ]]; then
     cat "$tmp"
+    rm -f "$tmp"
     die "APT simulation wants to remove protected packages: $(echo "$bad" | tr '\n' ' ')"
   fi
 
   printf '%s\n' "$removed"
-)  
+  rm -f "$tmp"
+}
 
 purge_known_desktop_stack() {
   local candidates=(
