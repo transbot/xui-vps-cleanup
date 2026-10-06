@@ -584,17 +584,7 @@ apt_sim_guard() (
   fi
 
   printf '%s\n' "$removed"
-)
-
-  removed="$(awk '/^Remv / {print $2}' "$tmp" | sort -u)"
-  bad="$(printf '%s\n' "$removed" | grep -E "$protected_pkg_regex" || true)"
-  if [[ -n "$bad" ]]; then
-    cat "$tmp"
-    die "APT simulation wants to remove protected packages: $(echo "$bad" | tr '\n' ' ')"
-  fi
-
-  printf '%s\n' "$removed"
-}
+)  
 
 purge_known_desktop_stack() {
   local candidates=(
