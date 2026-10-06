@@ -6,7 +6,7 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-VERSION="1.1.1"
+VERSION="1.1.2"
 JOURNAL_MAX_USE="${JOURNAL_MAX_USE:-200M}"
 JOURNAL_KEEP_FREE="${JOURNAL_KEEP_FREE:-1G}"
 ASSUME_YES=0
@@ -553,19 +553,38 @@ clean_low_risk() {
 
 protected_pkg_regex='^(openssh-server|openssh-client|ssh|systemd|systemd-sysv|systemd-resolved|udev|netplan.io|network-manager|ifupdown|isc-dhcp-client|networkd-dispatcher|iproute2|linux-generic|linux-image-generic|grub-pc|grub-common|ubuntu-minimal|cloud-init|fail2ban|ca-certificates|curl|wget|tar|unzip|bash|coreutils|apt|dpkg|python3|sudo)$'
 
-apt_sim_guard() {
-  local mode="$1"; shift
+apt_sim_guard() (
+  local mode="$1"
+  shift
+
   local tmp removed bad
   tmp="$(mktemp)"
-  trap 'rm -f "$tmp"' RETURN
+  trap 'rm -f "$tmp"' EXIT
 
   if [[ "$mode" == purge ]]; then
-    apt-get -s purge "$@" >"$tmp" 2>&1 || { cat "$tmp"; return 1; }
+    apt-get -s purge "$@" >"$tmp" 2>&1 || {
+      cat "$tmp"
+      return 1
+    }
   elif [[ "$mode" == autoremove ]]; then
-    apt-get -s autoremove --purge >"$tmp" 2>&1 || { cat "$tmp"; return 1; }
+    apt-get -s autoremove --purge >"$tmp" 2>&1 || {
+      cat "$tmp"
+      return 1
+    }
   else
     return 1
   fi
+
+  removed="$(awk '/^Remv / {print $2}' "$tmp" | sort -u)"
+  bad="$(printf '%s\n' "$removed" | grep -E "$protected_pkg_regex" || true)"
+
+  if [[ -n "$bad" ]]; then
+    cat "$tmp"
+    die "APT simulation wants to remove protected packages: $(echo "$bad" | tr '\n' ' ')"
+  fi
+
+  printf '%s\n' "$removed"
+)
 
   removed="$(awk '/^Remv / {print $2}' "$tmp" | sort -u)"
   bad="$(printf '%s\n' "$removed" | grep -E "$protected_pkg_regex" || true)"
@@ -833,6 +852,8 @@ log "xui-vps-cleanup v$VERSION; transcript: $LOGFILE"
 case "$COMMAND" in
   audit)
     audit
+    log "Audit completed. Full audit log: $LOGFILE"
+    printf 'Review it with:\n  less %q\n' "$LOGFILE"
     ;;
   clean)
     confirm "Run low-risk cleanup?" || exit 0
