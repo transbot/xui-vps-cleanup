@@ -827,7 +827,12 @@ if [[ "$COMMAND" == "_post-reboot-report" ]]; then
     systemctl is-active --quiet x-ui && break
     sleep 2
   done
+
+  # Give x-ui/Xray/subscription listeners time to finish starting.
+  sleep 15
+
   finalize_report 0
+
   systemctl disable xui-vps-cleanup-post-report.service >/dev/null 2>&1 || true
   rm -f /etc/systemd/system/xui-vps-cleanup-post-report.service
   systemctl daemon-reload || true
